@@ -1,4 +1,3 @@
-# Сервер
 import socket
 import select
 import time

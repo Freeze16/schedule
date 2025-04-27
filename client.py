@@ -1,4 +1,3 @@
-# Клиент
 import sys
 import socket
 import json
