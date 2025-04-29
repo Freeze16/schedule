@@ -20,19 +20,17 @@ class SineWaveServer:
 
         self.amplitude = 1.0
         self.frequency = 1.0
-        self.phase = 0
+        self.phase = 0.0
         self.sampling_rate = 100
 
     def start(self):
         self.running = True
         print(f"Server started on {self.host}:{self.port}")
 
-        # Запускаем поток для генерации данных
         data_thread = Thread(target=self.generate_data)
         data_thread.daemon = True
         data_thread.start()
 
-        # Основной цикл сервера
         try:
             while self.running:
                 read_sockets, _, _ = select.select([self.server_socket], [], [], 0.1)
@@ -64,7 +62,7 @@ class SineWaveServer:
             message_str = json.dumps(message) + '\n'
 
             self.broadcast(message_str)
-            time.sleep(2 / self.sampling_rate)
+            time.sleep(1.0 / self.sampling_rate)
 
     def broadcast(self, message):
         disconnected_clients = []

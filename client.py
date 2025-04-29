@@ -1,9 +1,11 @@
 import sys
 import socket
 import json
+import time
 from collections import deque
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton)
+                             QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton,
+                             QSlider, QSplitter)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.animation import FuncAnimation
@@ -13,17 +15,20 @@ from threading import Thread
 class RealTimePlot(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Visualizer')
-        self.setGeometry(100, 100, 800, 500)
+
+        self.setWindowTitle('Right-to-Left Sine Wave Visualizer')
+        self.setGeometry(100, 100, 1200, 700)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
+        # Панель управления слева
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
         control_layout.setContentsMargins(10, 10, 10, 10)
 
+        # Элементы управления
         self.amp_label = QLabel('Amplitude:')
         self.amp_spin = QDoubleSpinBox()
         self.amp_spin.setRange(0.1, 10.0)
@@ -39,37 +44,58 @@ class RealTimePlot(QMainWindow):
         self.update_btn = QPushButton('Update Parameters')
         self.update_btn.clicked.connect(self.update_parameters)
 
+        # Слайдер для прокрутки
+        self.scroll_label = QLabel('Time Scroll:')
+        self.scroll_slider = QSlider()
+        self.scroll_slider.setOrientation(1)  # Горизонтальный
+        self.scroll_slider.setRange(0, 100)
+        self.scroll_slider.setValue(0)
+        self.scroll_slider.valueChanged.connect(self.update_scroll)
+
         control_layout.addWidget(self.amp_label)
         control_layout.addWidget(self.amp_spin)
         control_layout.addWidget(self.freq_label)
         control_layout.addWidget(self.freq_spin)
         control_layout.addWidget(self.update_btn)
+        control_layout.addWidget(self.scroll_label)
+        control_layout.addWidget(self.scroll_slider)
         control_layout.addStretch()
 
-        # График
-        self.figure = Figure()
+        # График справа
+        self.figure = Figure(figsize=(8, 6), dpi=100)
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111)
-        self.ax.set_xlabel('Time (s)')
+        self.ax.set_xlabel('Time (relative)')
         self.ax.set_ylabel('Amplitude')
-        self.ax.set_title('Real-time Sine Wave')
+        self.ax.set_title('Right-to-Left Sine Wave')
         self.ax.grid(True)
 
-        self.max_points = 500
-        self.x_data = deque(maxlen=self.max_points)
-        self.y_data = deque(maxlen=self.max_points)
-        self.line, = self.ax.plot([], [], 'b-')
+        # Настройка данных
+        # self.max_points = 1000  # Увеличено для хранения больше истории
+        self.x_data = deque()
+        self.y_data = deque()
+        self.line, = self.ax.plot([], [], 'b-', linewidth=2)
 
-        main_layout.addWidget(control_panel, stretch=1)
-        main_layout.addWidget(self.canvas, stretch=3)
+        # Настройка layout с разделителем
+        splitter = QSplitter()
+        splitter.addWidget(control_panel)
+        splitter.addWidget(self.canvas)
+        splitter.setSizes([300, 900])
+        main_layout.addWidget(splitter)
 
         # Подключение к серверу
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connected = False
         self.connect_to_server()
 
+        # Время и прокрутка
+        self.start_time = time.time()
+        self.current_xlim = [-10, 0]  # Начинаем с -10 до 0 (право-лево)
+        self.auto_scroll = True
+
+        # Анимация
         self.animation = FuncAnimation(self.figure, self.update_plot,
-                                       interval=20, blit=True)
+                                       interval=50, blit=True)
 
     def connect_to_server(self):
         try:
@@ -109,19 +135,58 @@ class RealTimePlot(QMainWindow):
     def process_message(self, message):
         try:
             data = json.loads(message)
-            self.x_data.append(data['time'])
+            rel_time = data['time'] - self.start_time
+
+            # Добавляем данные (новые точки появляются справа)
+            self.x_data.append(rel_time)
             self.y_data.append(data['value'])
+
+            # Автопрокрутка, если слайдер в крайнем левом положении
+            if self.scroll_slider.value() == 0:
+                self.current_xlim = [rel_time - 10, rel_time]
+
         except json.JSONDecodeError as e:
             print(f"Error decoding message: {e}")
 
     def update_plot(self, frame):
         if self.x_data and self.y_data:
             self.line.set_data(self.x_data, self.y_data)
-            self.ax.relim()
-            self.ax.autoscale_view(True, True, True)
-            self.canvas.draw()
 
+            # Устанавливаем границы для право-левой прокрутки
+            if len(self.x_data) > 1:
+                if self.auto_scroll:
+                    # Автоматическая прокрутка (новые данные справа)
+                    latest_time = self.x_data[-1]
+                    self.ax.set_xlim(latest_time - 10, latest_time)
+                else:
+                    # Ручная прокрутка
+                    self.ax.set_xlim(self.current_xlim[0], self.current_xlim[1])
+
+                # Автомасштабирование по Y
+                visible_indices = [i for i, x in enumerate(self.x_data)
+                                   if self.current_xlim[0] <= x <= self.current_xlim[1]]
+                if visible_indices:
+                    visible_y = [self.y_data[i] for i in visible_indices]
+                    y_min = min(visible_y) * 1.1
+                    y_max = max(visible_y) * 1.1
+                    self.ax.set_ylim(y_min, y_max)
+
+        self.canvas.draw()
         return self.line,
+
+    def update_scroll(self, value):
+        # Переключение между ручной и автоматической прокруткой
+        if value == 0:
+            self.auto_scroll = True
+        else:
+            self.auto_scroll = False
+            if len(self.x_data) > 1:
+                # Преобразуем значение слайдера в диапазон времени
+                total_range = self.x_data[-1] - self.x_data[0]
+                ratio = value / self.scroll_slider.maximum()
+                window_start = self.x_data[0] + ratio * (total_range - 10)
+                self.current_xlim = [window_start, window_start + 10]
+                self.canvas.draw()
 
     def update_parameters(self):
         if not self.connected:
@@ -141,7 +206,6 @@ class RealTimePlot(QMainWindow):
     def closeEvent(self, event):
         if self.connected:
             self.client_socket.close()
-
         super().closeEvent(event)
 
 
@@ -149,5 +213,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = RealTimePlot()
     window.show()
-
     sys.exit(app.exec_())
