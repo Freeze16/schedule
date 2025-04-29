@@ -64,7 +64,7 @@ class SineWaveServer:
             message_str = json.dumps(message) + '\n'
 
             self.broadcast(message_str)
-            time.sleep(1.0 / self.sampling_rate)
+            time.sleep(2 / self.sampling_rate)
 
     def broadcast(self, message):
         disconnected_clients = []

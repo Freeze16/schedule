@@ -118,7 +118,8 @@ class RealTimePlot(QMainWindow):
         if self.x_data and self.y_data:
             self.line.set_data(self.x_data, self.y_data)
             self.ax.relim()
-            self.ax.autoscale_view()
+            self.ax.autoscale_view(True, True, True)
+            self.canvas.draw()
 
         return self.line,
 
