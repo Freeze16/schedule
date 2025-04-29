@@ -16,14 +16,13 @@ class RealTimePlot(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle('Right-to-Left Sine Wave Visualizer')
+        self.setWindowTitle('Sine Wave Visualizer')
         self.setGeometry(100, 100, 1200, 700)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # Панель управления слева
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
         control_layout.setContentsMargins(10, 10, 10, 10)
@@ -47,7 +46,7 @@ class RealTimePlot(QMainWindow):
         # Слайдер для прокрутки
         self.scroll_label = QLabel('Time Scroll:')
         self.scroll_slider = QSlider()
-        self.scroll_slider.setOrientation(1)  # Горизонтальный
+        self.scroll_slider.setOrientation(1)
         self.scroll_slider.setRange(0, 100)
         self.scroll_slider.setValue(0)
         self.scroll_slider.valueChanged.connect(self.update_scroll)
@@ -61,37 +60,32 @@ class RealTimePlot(QMainWindow):
         control_layout.addWidget(self.scroll_slider)
         control_layout.addStretch()
 
-        # График справа
         self.figure = Figure(figsize=(8, 6), dpi=100)
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111)
         self.ax.set_xlabel('Time (relative)')
         self.ax.set_ylabel('Amplitude')
-        self.ax.set_title('Right-to-Left Sine Wave')
+        self.ax.set_title('Sine Wave')
         self.ax.grid(True)
 
-        # Настройка данных
-        # self.max_points = 1000  # Увеличено для хранения больше истории
         self.x_data = deque()
         self.y_data = deque()
         self.line, = self.ax.plot([], [], 'b-', linewidth=2)
 
-        # Настройка layout с разделителем
         splitter = QSplitter()
         splitter.addWidget(control_panel)
         splitter.addWidget(self.canvas)
         splitter.setSizes([300, 900])
         main_layout.addWidget(splitter)
 
+        self.start_time = time.time()
+        self.current_xlim = [-10, 0]  # Начинаем с -10 до 0 (право-лево)
+        self.auto_scroll = True
+
         # Подключение к серверу
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connected = False
         self.connect_to_server()
-
-        # Время и прокрутка
-        self.start_time = time.time()
-        self.current_xlim = [-10, 0]  # Начинаем с -10 до 0 (право-лево)
-        self.auto_scroll = True
 
         # Анимация
         self.animation = FuncAnimation(self.figure, self.update_plot,
@@ -152,17 +146,13 @@ class RealTimePlot(QMainWindow):
         if self.x_data and self.y_data:
             self.line.set_data(self.x_data, self.y_data)
 
-            # Устанавливаем границы для право-левой прокрутки
             if len(self.x_data) > 1:
                 if self.auto_scroll:
-                    # Автоматическая прокрутка (новые данные справа)
                     latest_time = self.x_data[-1]
                     self.ax.set_xlim(latest_time - 10, latest_time)
                 else:
-                    # Ручная прокрутка
                     self.ax.set_xlim(self.current_xlim[0], self.current_xlim[1])
 
-                # Автомасштабирование по Y
                 visible_indices = [i for i, x in enumerate(self.x_data)
                                    if self.current_xlim[0] <= x <= self.current_xlim[1]]
                 if visible_indices:
@@ -175,13 +165,11 @@ class RealTimePlot(QMainWindow):
         return self.line,
 
     def update_scroll(self, value):
-        # Переключение между ручной и автоматической прокруткой
         if value == 0:
             self.auto_scroll = True
         else:
             self.auto_scroll = False
             if len(self.x_data) > 1:
-                # Преобразуем значение слайдера в диапазон времени
                 total_range = self.x_data[-1] - self.x_data[0]
                 ratio = value / self.scroll_slider.maximum()
                 window_start = self.x_data[0] + ratio * (total_range - 10)
